@@ -52,9 +52,10 @@ model = model.eval()
 model = SpeechRecognizer(model)
 
 # Apply quantization / script / optimize for motbile
-quantized_model = torch.quantization.quantize_dynamic(
-    model, qconfig_spec={torch.nn.Linear}, dtype=torch.qint8)
-scripted_model = torch.jit.script(quantized_model)
+# quantized_model = torch.quantization.quantize_dynamic(
+#     model, qconfig_spec={torch.nn.Linear}, dtype=torch.qint8)
+# scripted_model = torch.jit.script(quantized_model)
+scripted_model = torch.jit.script(model)
 optimized_model = optimize_for_mobile(scripted_model)
 
 # Sanity check

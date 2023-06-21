@@ -16,6 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
     NS_SWIFT_NAME(init(fileAtPath:))NS_DESIGNATED_INITIALIZER;
 - (instancetype)init NS_UNAVAILABLE;
 - (nullable NSString*)recognize:(void*)wavBuffer bufLength:(int)bufLength NS_SWIFT_NAME(recognize(wavBuffer:bufLength));
+- (nullable NSArray<NSNumber*>*)vocode:(void*)units lang:(NSString*)lang NS_SWIFT_NAME(vocode(units:lang));
 @end
 
 NS_ASSUME_NONNULL_END

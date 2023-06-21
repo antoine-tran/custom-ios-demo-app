@@ -16,26 +16,47 @@ extension String {
     }
 }
 
+func fillBuffer(_ buffer: AVAudioPCMBuffer, _ input: [NSNumber]) {
+    let data = buffer.floatChannelData?[0]
+    let numberFrames = input.count
+    for frame in 00..<Int(numberFrames) {
+        data?[frame] = Float32(truncating: input[frame])
+    }
+    buffer.frameLength = AVAudioFrameCount(numberFrames)
+}
+
 class ViewController: UIViewController, AVAudioRecorderDelegate  {
 
     @IBOutlet weak var btnStart: UIButton!
+    @IBOutlet weak var btnPlay: UIButton!
     @IBOutlet weak var tvResult: UITextView!
     
     private var audioRecorder: AVAudioRecorder!
     private var _recorderFilePath: String!
     
-    private let AUDIO_LEN_IN_SECOND = 6
+    private let AUDIO_LEN_IN_SECOND = 10
     private let SAMPLE_RATE = 16000
+    
 
     private lazy var module: InferenceModule = {
-        if let filePath = Bundle.main.path(forResource:
-            "wav2vec2", ofType: "ptl"),
-            let module = InferenceModule(fileAtPath: filePath) {
-            return module
-        } else {
-            fatalError("Can't find the model file!")
+        guard let filePath = Bundle.main.path(forResource:"model_67M_multitask_testing_full", ofType: "ptl") else {
+            fatalError("Cannot find the module file")
         }
-    }()    
+        guard let module = InferenceModule(fileAtPath: filePath) else {
+            fatalError("Cannot build the inference module")
+        }
+        return module
+    }()
+    
+    private lazy var vocoder: InferenceModule = {
+        guard let filePath = Bundle.main.path(forResource:"mhubert", ofType: "ptl") else {
+            fatalError("Cannot find the vocoder file")
+        }
+        guard let vocoder = InferenceModule(fileAtPath: filePath) else {
+            fatalError("Cannot build the inference vocoder")
+        }
+        return vocoder
+    }()
     
     @IBAction func startTapped(_ sender: Any) {
         AVAudioSession.sharedInstance().requestRecordPermission ({(granted: Bool)-> Void in
@@ -75,6 +96,45 @@ class ViewController: UIViewController, AVAudioRecorderDelegate  {
             tvResult.text = "error:" + error.localizedDescription
         }
     }
+    
+    @IBAction func playTapped(_ send: Any) {
+        let audioSession = AVAudioSession.sharedInstance()
+        
+        do {
+            try audioSession.setCategory(AVAudioSession.Category.playback)
+            try audioSession.setActive(true)
+        } catch {
+            tvResult.text = "playback exception"
+            return
+        }
+        
+        // TODO: Replace input tensor with the real units from unitY inference module's output
+        let fakeInput = UnsafeMutablePointer<Float>.init(mutating: [Float(0.0)])
+        if let result = self.vocoder.vocode(fakeInput, lang: "en") {
+            let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Double(16_000), channels: 1, interleaved: false)
+            let buf = AVAudioPCMBuffer(pcmFormat: format!, frameCapacity: AVAudioFrameCount(result.count))
+            fillBuffer(buf!, result)
+            let engine = AVAudioEngine()
+            let player = AVAudioPlayerNode()
+            engine.attach(player)
+            let mixer = engine.mainMixerNode
+            engine.connect(player, to: mixer, format: engine.inputNode.outputFormat(forBus: 0))
+            do {
+                try engine.start()
+                player.scheduleBuffer(buf!, completionHandler: nil)
+                player.play()
+
+            }
+            catch let error {
+                tvResult.text = "error:" + error.localizedDescription
+            }
+            
+        }
+        else {
+            fatalError("Error in vocoding units")
+        }
+
+    }
 
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         btnStart.setTitle("Recognizing...", for: .normal)
@@ -83,7 +143,6 @@ class ViewController: UIViewController, AVAudioRecorderDelegate  {
             let url = NSURL.fileURL(withPath: _recorderFilePath)
             let file = try! AVAudioFile(forReading: url)
             let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: file.fileFormat.sampleRate, channels: 1, interleaved: false)
-
             let buf = AVAudioPCMBuffer(pcmFormat: format!, frameCapacity: AVAudioFrameCount(file.length))
             try! file.read(into: buf!)
 
